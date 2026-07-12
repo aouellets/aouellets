@@ -1,0 +1,43 @@
+# Rebuilds the profile hero SVGs (assets/profile-dark.svg / -light.svg) with
+# live GitHub stats. Runs daily, on manual dispatch, and on pushes to main.
+# GITHUB_TOKEN pushes never re-trigger workflows, and paths-ignore guards the
+# stat-refresh commits anyway.
+
+name: profile
+
+on:
+  schedule:
+    - cron: "15 5 * * *" # daily, 05:15 UTC
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "assets/profile-*.svg"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rebuild profile SVGs with live stats
+        run: python3 scripts/build_profile.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit refreshed SVGs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/profile-dark.svg assets/profile-light.svg
+          git diff --cached --quiet || git commit -m "chore: refresh profile stats"
+          git push
