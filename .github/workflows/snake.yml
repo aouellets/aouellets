@@ -26,8 +26,8 @@ jobs:
         with:
           github_user_name: aouellets
           outputs: |
-            dist/github-snake.svg?color_snake=#0a0a0a&color_dots=#ebedf0,#e3d49a,#c9a636,#9c7f22,#6b5614
-            dist/github-snake-dark.svg?color_snake=#d4af37&color_dots=#161b22,#3d3110,#6e581a,#9c7c25,#c9a12e
+            dist/github-snake.svg?color_snake=#0a0a0a&color_dots=#ebedf0,#f6c9c9,#e88787,#d43d3d,#c9182b
+            dist/github-snake-dark.svg?color_snake=#e5484d&color_dots=#161b22,#3d1114,#701a20,#a11d27,#c9182b
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
