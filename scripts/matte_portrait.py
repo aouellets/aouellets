@@ -1,29 +1,31 @@
 #!/usr/bin/env python3
-"""Face matte for the profile portrait.
+"""Bust-portrait matte for the profile halftone.
 
-Crops assets/portrait.jpg to a head-and-shoulders frame, cuts the subject out
-with a hand-traced polygon matte (no ML dependencies), and writes
-assets/portrait_masked.png — the input scripts/ascii_portrait.py turns into
-the ASCII grid.
+Crops assets/portrait.jpg to a classic bust framing — ~5% headroom over the
+hair, head ≈53% of frame width, chin at ~60% height, shoulders and chest
+filling the bottom corners — cuts the subject out with a hand-traced polygon
+matte (no ML dependencies), and writes assets/portrait_masked.png for
+scripts/ascii_portrait.py.
 
-The crop box and shapes below are tuned to the CURRENT photo. If you swap the
-photo, re-trace them; coordinates are fractions of the CROPPED frame.
+The crop box and shapes are tuned to the CURRENT photo. If you swap the
+photo, re-trace them; shape coordinates are fractions of the CROPPED frame
+(they may extend past 0..1 — PIL clips them to the frame).
 
 Full pipeline after swapping assets/portrait.jpg (a higher-resolution,
 face-forward photo gives the halftone more detail to work with):
     python3 scripts/matte_portrait.py
     python3 scripts/ascii_portrait.py assets/portrait_masked.png \
-        --cols 104 --crop 0.15 0.02 0.87 0.90 --char-aspect 0.44 \
+        --cols 104 --crop 0 0 1 1 --char-aspect 0.43 \
         --contrast 1.05 --json assets/portrait_tones.json
     python3 scripts/build_profile.py
 """
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
-CROP = (0.26, 0.0, 0.72, 0.42)  # face box within the source photo
+CROP = (0.325, 0.008, 0.665, 0.444)  # bust frame within the source photo
 SUBJECT_FLOOR = 60  # min luminance inside the matte so dark clothing keeps texture
 # (must sit clearly above build_profile.SKIP so the clothing mass survives the
 # background cutoff in both render modes)
@@ -40,13 +42,14 @@ def pts(fr):
 mask = Image.new("L", (W, H), 0)
 d = ImageDraw.Draw(mask)
 
-# head
-d.ellipse([0.30 * W, 0.06 * H, 0.72 * W, 0.73 * H], fill=255)
+# head (with headroom — the ellipse starts above the hairline)
+d.ellipse([0.215 * W, 0.039 * H, 0.782 * W, 0.685 * H], fill=255)
 # neck
-d.polygon(pts([(0.40, 0.60), (0.62, 0.60), (0.64, 0.88), (0.38, 0.88)]), fill=255)
-# shoulders rising into the bottom of the frame
-d.polygon(pts([(0.03, 1.0), (0.22, 0.85), (0.40, 0.79), (0.62, 0.79),
-               (0.80, 0.85), (0.99, 1.0)]), fill=255)
+d.polygon(pts([(0.35, 0.56), (0.65, 0.56), (0.67, 0.83), (0.33, 0.83)]), fill=255)
+# shoulders and chest, running off the frame edges so the bust is grounded
+d.polygon(pts([(-0.20, 0.96), (0.10, 0.80), (0.35, 0.74), (0.65, 0.74),
+               (0.90, 0.80), (1.20, 0.96), (1.35, 1.15), (1.35, 1.40),
+               (-0.30, 1.40), (-0.30, 1.15)]), fill=255)
 
 mask = mask.filter(ImageFilter.GaussianBlur(2.5))
 

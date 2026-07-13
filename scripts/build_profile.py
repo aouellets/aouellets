@@ -47,7 +47,7 @@ GLYPHS = " .':;i1tfLCG08@"
 SKIP = 45
 HALFTONE = {
     # dark mode: brighter pixel -> hotter color (deep red -> brand red -> bone)
-    "dark": [(37, "#5c151b"), (64, "#7d1722"), (96, "#a01827"), (128, "#bf182b"),
+    "dark": [(37, "#69161f"), (64, "#8a1826"), (96, "#a81828"), (128, "#bf182b"),
              (160, "#d63a41"), (192, "#e5484d"), (220, "#eda28f"),
              (242, "#ece7dd")],
     # light mode: stops indexed by ink strength (255 - tone); darker feature -> heavier
@@ -65,6 +65,8 @@ def halftone_cell(tone, mode, frac_y=0.0):
     level = tone if mode == "dark" else 255 - tone
     if mode == "light" and frac_y > 0.78:
         level = min(level, 168)  # mute the clothing slab below the shoulder line
+    if mode == "dark" and frac_y > 0.74:
+        level = max(level, 75)  # give the garment a solid mass instead of faint mist
     idx = min(int(level / 255 * len(GLYPHS)), len(GLYPHS) - 1)
     if mode == "light":
         idx = max(idx, 3)  # keep the skin field contiguous instead of airy dots
