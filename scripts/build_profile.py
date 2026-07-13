@@ -113,6 +113,14 @@ def halftone_cell(cell, mode, frac_y=0.0):
         # exposure is baked into the color matte (subject-weighted); only a
         # gentle global lift here
         rr, gg, bb = (round(255 * (c / 255) ** 0.9) for c in (r, g, b))
+        # garment mass: below the shoulder line, cells that still carry color
+        # are fabric (the desaturated backdrop tops out near-black) — give the
+        # near-black tee a visibility floor so the shoulders read on the card
+        if frac_y > 0.72 and max(rr, gg, bb) > 48:
+            m = max(rr, gg, bb)
+            if m < 115:
+                rr, gg, bb = (min(round(c * 115 / m), 255) for c in (rr, gg, bb))
+            idx = max(idx, 7)
         rr, gg, bb = (min(round(c / 8) * 8, 255) for c in (rr, gg, bb))
         return GLYPHS[idx], "#%02x%02x%02x" % (rr, gg, bb)
     return GLYPHS[idx], tone_color(level, mode)
