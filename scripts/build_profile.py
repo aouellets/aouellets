@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate assets/profile-dark.svg and assets/profile-light.svg.
 
-Layout: ASCII portrait (assets/portrait_ascii.txt) on the left, a dotted-leader
-spec sheet on the right, GFBT palette (near-black / bone / blood red).
+Layout: ASCII face portrait (assets/portrait_ascii.txt) in an inset well on
+the left; name, roles, stack, shipped work, stat chips, and contact on the
+right. GFBT palette — near-black surfaces, bone text, blood-red accent.
 
 GitHub stats are fetched live when GITHUB_TOKEN (or GH_TOKEN) is set — the
 profile workflow provides one — and fall back to "--" placeholders offline.
@@ -17,18 +18,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LOGIN = "aouellets"
-WIDTH_CHARS = 66  # right-column line width in characters
 
-PALETTES = {
+# Design tokens (UI/UX Pro Max: token-driven, surfaces lifted off pure black,
+# AA-checked text pairs, red reserved for accent moments).
+TOKENS = {
     "dark": {
-        "card": "#0d0c0c", "border": "#2b1519", "text": "#e8e4da",
-        "dim": "#6f6a60", "red": "#e5484d", "portrait": "#e8e4da",
+        "card": "#141112", "well": "#1b1718", "border": "#2e2325",
+        "text": "#ece7dd", "muted": "#a39c8f", "dim": "#5f5852",
+        "red": "#e5484d", "brand": "#c9182b",
     },
     "light": {
-        "card": "#faf8f3", "border": "#e2dbcd", "text": "#1b1815",
-        "dim": "#9a927f", "red": "#a4111f", "portrait": "#2a2622",
+        "card": "#faf8f4", "well": "#f0ece3", "border": "#ddd5c7",
+        "text": "#211d18", "muted": "#6d6557", "dim": "#b3aa99",
+        "red": "#a4111f", "brand": "#a4111f",
     },
 }
+
+MONO = ("font-family=\"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,"
+        "'DejaVu Sans Mono','Liberation Mono',monospace\"")
 
 
 def fetch_stats():
@@ -39,9 +46,7 @@ def fetch_stats():
     { user(login: "%s") {
         createdAt
         followers { totalCount }
-        repositories(first: 100, ownerAffiliations: OWNER) {
-          totalCount nodes { stargazerCount }
-        }
+        repositories(first: 1, ownerAffiliations: OWNER) { totalCount }
         contributionsCollection {
           contributionCalendar { totalContributions }
         }
@@ -58,136 +63,138 @@ def fetch_stats():
         created = datetime.fromisoformat(user["createdAt"].replace("Z", "+00:00"))
         years = (datetime.now(timezone.utc) - created).days // 365
         return {
-            "years": str(years),
             "repos": str(user["repositories"]["totalCount"]),
-            "stars": str(sum(n["stargazerCount"] for n in user["repositories"]["nodes"])),
-            "followers": str(user["followers"]["totalCount"]),
             "contribs": f'{user["contributionsCollection"]["contributionCalendar"]["totalContributions"]:,}',
+            "years": str(years),
+            "followers": str(user["followers"]["totalCount"]),
         }
     except Exception as e:  # offline / rate-limited: keep placeholders
         print(f"stats fetch failed ({e}); using placeholders")
         return None
 
 
-def content(stats):
-    s = stats or {k: "--" for k in ("years", "repos", "stars", "followers", "contribs")}
-    kv, sect, blank = "kv", "sect", "blank"
-    return [
-        ("head", None, None),
-        (kv, "Host", [("AI Product / Systems Builder", "text")]),
-        (kv, "Uptime", [(f'{s["years"]} yrs shipping on GitHub', "text")]),
-        (blank, None, None),
-        (sect, "Roles", None),
-        (kv, "Founder", [("SkillMe", "red"), (" — MCP-native Claude skills catalog", "text")]),
-        (kv, "Founder", [("DiligenceOS", "red"), (" — due diligence as a pipeline", "text")]),
-        (kv, "President", [("HWPO Training", "red"), (" — Hard Work Pays Off", "text")]),
-        (kv, "Co-founder", [("Good Friends Bad Times", "red")]),
-        (blank, None, None),
-        (sect, "Stack", None),
-        (kv, "Languages", [("TypeScript · Python · Swift", "text")]),
-        (kv, "Frameworks", [("Next.js · React Native / Expo", "text")]),
-        (kv, "Infra", [("Supabase · Vercel · MCP servers", "text")]),
-        (kv, "Focus", [("AI architecture · RAG pipelines · industrial AI", "text")]),
-        (kv, "Training", [("CrossFit", "text")]),
-        (blank, None, None),
-        (sect, "Shipped — private repos, redacted", None),
-        (kv, "mcp", [("skills registry — agents install their own tools", "text")]),
-        (kv, "rag", [("industrial retrieval — docs + telemetry answers", "text")]),
-        (kv, "diligence", [("extraction — documents in, decisions out", "text")]),
-        (kv, "mobile", [("training platform at brand scale", "text")]),
-        (blank, None, None),
-        (sect, "Contact", None),
-        (kv, "Email", [("alexander.ouellet@icloud.com", "text")]),
-        (kv, "Web", [("goodfriends-badtimes.com", "text")]),
-        (blank, None, None),
-        (sect, "GitHub", None),
-        (kv, "Repos / Stars", [(f'{s["repos"]}', "red"), (" / ", "dim"), (f'{s["stars"]}', "red")]),
-        (kv, "Followers / Contributions [1y]",
-         [(f'{s["followers"]}', "red"), (" / ", "dim"), (f'{s["contribs"]}', "red")]),
-    ]
-
-
 def esc(t):
     return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def build_svg(palette, ascii_lines, rows):
-    p = PALETTES[palette]
-    fs_info, lh_info = 13, 13.8
-    fs_art, lh_art = 11, 14.6
-    x_art, x_info = 30, 372
-    y0 = 42
-    height = max(y0 + len(rows) * lh_info, y0 + len(ascii_lines) * lh_art) + 26
-    width = 920
-    mono = ("font-family=\"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,"
-            "'DejaVu Sans Mono','Liberation Mono',monospace\"")
+def build_svg(mode, ascii_lines, stats):
+    t = TOKENS[mode]
+    s = stats or {k: "--" for k in ("repos", "contribs", "years", "followers")}
+    W, H = 920, 568
+    pad = 24
 
-    out = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height:.0f}" '
-        f'viewBox="0 0 {width} {height:.0f}" role="img" aria-label="Alexander Ouellet — profile card">',
+    # portrait well geometry
+    art_fs, art_lh = 11.8, 15.7
+    art_cols = max(len(l) for l in ascii_lines)
+    well_w = round(art_cols * art_fs * 0.6) + 36
+    well_h = H - 2 * pad
+    art_x = pad + 18
+    art_y0 = pad + (well_h - len(ascii_lines) * art_lh) / 2 + 4
+
+    rx = pad + well_w + 26          # right column origin
+    rw = W - rx - pad               # right column width
+
+    svg = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
+        f'viewBox="0 0 {W} {H}" role="img" aria-label="Alexander Ouellet — profile card">',
         f'<title>alexander@{LOGIN}</title>',
-        f'<rect x="1.5" y="1.5" width="{width - 3}" height="{height - 3:.0f}" rx="12" '
-        f'fill="{p["card"]}" stroke="{p["border"]}" stroke-width="1.5"/>',
+        f'<rect x="1.5" y="1.5" width="{W - 3}" height="{H - 3}" rx="14" '
+        f'fill="{t["card"]}" stroke="{t["border"]}" stroke-width="1.5"/>',
+        f'<rect x="{pad}" y="{pad}" width="{well_w}" height="{well_h}" rx="10" fill="{t["well"]}"/>',
     ]
 
-    # left column: ascii portrait
+    # ascii face, red
     for i, line in enumerate(ascii_lines):
         if not line.strip():
             continue
-        out.append(
-            f'<text x="{x_art}" y="{y0 + 6 + i * lh_art:.1f}" xml:space="preserve" {mono} '
-            f'font-size="{fs_art}" fill="{p["portrait"]}" opacity="0.92">{esc(line)}</text>'
-        )
+        svg.append(f'<text x="{art_x}" y="{art_y0 + i * art_lh:.1f}" xml:space="preserve" '
+                   f'{MONO} font-size="{art_fs}" fill="{t["red"]}">{esc(line)}</text>')
+    svg.append(f'<text x="{art_x}" y="{pad + well_h - 14}" {MONO} font-size="10" '
+               f'fill="{t["dim"]}">$ ascii --render portrait.jpg</text>')
 
-    # right column: spec sheet
-    info_w = 920 - x_info - 30
-    for i, (kind, key, value) in enumerate(rows):
-        y = y0 + 10 + i * lh_info
-        if kind == "blank":
-            continue
-        if kind == "head":
-            out.append(
-                f'<text x="{x_info}" y="{y:.1f}" {mono} font-size="14" font-weight="bold">'
-                f'<tspan fill="{p["text"]}">alexander</tspan><tspan fill="{p["red"]}">@</tspan>'
-                f'<tspan fill="{p["text"]}">{LOGIN}</tspan></text>'
-            )
-            out.append(f'<line x1="{x_info + 172}" y1="{y - 4:.1f}" x2="{x_info + info_w}" '
-                       f'y2="{y - 4:.1f}" stroke="{p["border"]}" stroke-width="1"/>')
-            continue
-        if kind == "sect":
-            label = esc(key)
-            out.append(
-                f'<text x="{x_info}" y="{y:.1f}" {mono} font-size="{fs_info}" font-weight="bold" '
-                f'fill="{p["red"]}">- {label}</text>'
-            )
-            rule_x = x_info + (len(key) + 3) * 7.9
-            out.append(f'<line x1="{rule_x:.0f}" y1="{y - 4:.1f}" x2="{x_info + info_w}" '
-                       f'y2="{y - 4:.1f}" stroke="{p["border"]}" stroke-width="1"/>')
-            continue
-        # kv line with dotted leader; value right-aligned to a fixed char width
-        val_len = sum(len(t) for t, _ in value)
-        dots = WIDTH_CHARS - len(key) - val_len - 5
-        dots = max(dots, 2)
-        tspans = (
-            f'<tspan fill="{p["dim"]}">. </tspan>'
-            f'<tspan fill="{p["text"]}">{esc(key)}:</tspan>'
-            f'<tspan fill="{p["dim"]}"> {"." * dots} </tspan>'
-        )
-        for t, role in value:
-            tspans += f'<tspan fill="{p[role if role != "text" else "text"]}">{esc(t)}</tspan>'
-        out.append(f'<text x="{x_info}" y="{y:.1f}" xml:space="preserve" {mono} '
-                   f'font-size="{fs_info}">{tspans}</text>')
+    y = pad + 40
 
-    out.append("</svg>")
-    return "\n".join(out) + "\n"
+    def text(x, yy, content, size, fill, weight=None, spacing=None, anchor=None):
+        attrs = f'{MONO} font-size="{size}" fill="{fill}"'
+        if weight:
+            attrs += f' font-weight="{weight}"'
+        if spacing:
+            attrs += f' letter-spacing="{spacing}"'
+        if anchor:
+            attrs += f' text-anchor="{anchor}"'
+        svg.append(f'<text x="{x}" y="{yy:.1f}" {attrs}>{content}</text>')
+
+    # identity
+    text(rx, y, "ALEXANDER OUELLET", 27, t["text"], weight=700, spacing="-0.5")
+    y += 26
+    text(rx, y, "AI Product Executive", 13.5, t["red"], weight=600, spacing="0.5")
+    y += 14
+    svg.append(f'<rect x="{rx}" y="{y}" width="56" height="3" fill="{t["brand"]}"/>')
+    y += 30
+
+    def label(name):
+        nonlocal y
+        text(rx, y, esc(name), 10.5, t["dim"], weight=700, spacing="2.5")
+        y += 19
+
+    def row(segs, lh=19, size=13):
+        nonlocal y
+        parts = ""
+        for txt, c in segs:
+            weight = ' font-weight="600"' if c == "text" else ""
+            parts += f'<tspan fill="{t[c]}"{weight}>{esc(txt)}</tspan>'
+        svg.append(f'<text x="{rx}" y="{y:.1f}" xml:space="preserve" {MONO} '
+                   f'font-size="{size}">{parts}</text>')
+        y += lh
+
+    label("ROLES")
+    row([("Founder @ SkillMe", "text"), (" — MCP-native Claude skills", "muted")])
+    row([("Founder @ DiligenceOS", "text"), (" — due diligence pipelines", "muted")])
+    row([("President @ HWPO Training", "text"), (" — Hard Work Pays Off", "muted")])
+    row([("Co-founder @ Good Friends Bad Times", "text")], lh=19)
+    y += 12
+
+    label("STACK")
+    row([("TypeScript · Python · Swift", "text")])
+    row([("Next.js · React Native / Expo · Supabase · Vercel", "muted")])
+    y += 12
+
+    label("FOCUS")
+    row([("AI product architecture · RAG / vector pipelines", "text")])
+    row([("MCP servers · industrial AI", "muted")])
+    y += 12
+
+    label("SHIPPED — PRIVATE REPOS, REDACTED")
+    row([("skills registry (MCP) · industrial retrieval", "muted")])
+    row([("diligence extraction · training platform @ scale", "muted")])
+    y += 16
+
+    # stat chips
+    chips = [(s["repos"], "REPOS"), (s["contribs"], "CONTRIB 1Y"),
+             (s["years"], "YRS ON GH"), (s["followers"], "FOLLOWERS")]
+    gap, ch = 10, 48
+    cw = (rw - gap * (len(chips) - 1)) / len(chips)
+    for i, (num, lab) in enumerate(chips):
+        cx = rx + i * (cw + gap)
+        svg.append(f'<rect x="{cx:.1f}" y="{y}" width="{cw:.1f}" height="{ch}" rx="8" '
+                   f'fill="{t["well"]}" stroke="{t["border"]}" stroke-width="1"/>')
+        text(cx + cw / 2, y + 22, esc(num), 17, t["red"], weight=700, anchor="middle")
+        text(cx + cw / 2, y + 38, lab, 8.5, t["dim"], weight=700, spacing="1.5", anchor="middle")
+    y += ch + 30
+
+    row([("alexander.ouellet@icloud.com", "muted"), (" · ", "dim"),
+         ("goodfriends-badtimes.com", "muted")], size=12)
+
+    svg.append("</svg>")
+    return "\n".join(svg) + "\n"
 
 
 def main():
     ascii_lines = (ROOT / "assets/portrait_ascii.txt").read_text().splitlines()
-    rows = content(fetch_stats())
-    for palette in ("dark", "light"):
-        path = ROOT / f"assets/profile-{palette}.svg"
-        path.write_text(build_svg(palette, ascii_lines, rows))
+    stats = fetch_stats()
+    for mode in ("dark", "light"):
+        path = ROOT / f"assets/profile-{mode}.svg"
+        path.write_text(build_svg(mode, ascii_lines, stats))
         print(f"wrote {path}")
 
 

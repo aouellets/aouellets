@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Silhouette matte for the profile portrait.
+"""Face matte for the profile portrait.
 
-Cuts the subject out of assets/portrait.jpg with a hand-traced polygon matte
-(no ML dependencies) and writes assets/portrait_masked.png, the input that
-scripts/ascii_portrait.py converts to the ASCII grid.
+Crops assets/portrait.jpg to a head-and-shoulders frame, cuts the subject out
+with a hand-traced polygon matte (no ML dependencies), and writes
+assets/portrait_masked.png — the input scripts/ascii_portrait.py turns into
+the ASCII grid.
 
-The polygons below are tuned to the CURRENT photo (runner, centered, square
-crop). If you swap the photo, re-trace the shapes — coordinates are fractions
-of image width/height, so eyeball them off any image viewer.
+The crop box and shapes below are tuned to the CURRENT photo. If you swap the
+photo, re-trace them; coordinates are fractions of the CROPPED frame.
 
 Full pipeline after swapping assets/portrait.jpg:
     python3 scripts/matte_portrait.py
     python3 scripts/ascii_portrait.py assets/portrait_masked.png \
-        --cols 48 --crop 0.14 0.0 0.87 0.76 --char-aspect 0.55 \
-        --contrast 1.25 > assets/portrait_ascii.txt
+        --cols 56 --crop 0 0 1 1 --char-aspect 0.5 --contrast 1.15 \
+        --gamma 1.25 > assets/portrait_ascii.txt
     python3 scripts/build_profile.py
 """
 
@@ -22,9 +22,13 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
-SUBJECT_FLOOR = 42  # min luminance inside the matte so black clothing keeps texture
+CROP = (0.26, 0.0, 0.72, 0.42)  # face box within the source photo
+SUBJECT_FLOOR = 46  # min luminance inside the matte so dark clothing keeps texture
 
-img = Image.open(ROOT / "assets/portrait.jpg").convert("L")
+src = Image.open(ROOT / "assets/portrait.jpg").convert("L")
+sw, sh = src.size
+img = src.crop((int(CROP[0] * sw), int(CROP[1] * sh),
+                int(CROP[2] * sw), int(CROP[3] * sh)))
 W, H = img.size
 
 def pts(fr):
@@ -33,31 +37,31 @@ def pts(fr):
 mask = Image.new("L", (W, H), 0)
 d = ImageDraw.Draw(mask)
 
-# head + neck
-d.ellipse([0.405 * W, 0.030 * H, 0.585 * W, 0.300 * H], fill=255)
-d.polygon(pts([(0.44, 0.26), (0.56, 0.26), (0.57, 0.36), (0.43, 0.36)]), fill=255)
-# torso down through the shorts
-d.polygon(pts([(0.30, 0.36), (0.70, 0.345), (0.78, 0.52), (0.80, 0.75),
-               (0.84, 1.0), (0.30, 1.0), (0.26, 0.75), (0.28, 0.52)]), fill=255)
-# viewer-left arm (outer edge -> hand -> inner edge)
-d.polygon(pts([(0.30, 0.36), (0.21, 0.42), (0.175, 0.53), (0.165, 0.63),
-               (0.19, 0.71), (0.225, 0.755), (0.26, 0.72), (0.27, 0.62),
-               (0.28, 0.50), (0.30, 0.44)]), fill=255)
-# viewer-right arm (bent, hand in front of torso)
-d.polygon(pts([(0.70, 0.345), (0.82, 0.42), (0.86, 0.52), (0.81, 0.61),
-               (0.72, 0.665), (0.645, 0.695), (0.615, 0.655), (0.68, 0.60),
-               (0.72, 0.52), (0.695, 0.44)]), fill=255)
+# head
+d.ellipse([0.30 * W, 0.06 * H, 0.72 * W, 0.73 * H], fill=255)
+# neck
+d.polygon(pts([(0.40, 0.60), (0.62, 0.60), (0.64, 0.88), (0.38, 0.88)]), fill=255)
+# shoulders rising into the bottom of the frame
+d.polygon(pts([(0.03, 1.0), (0.22, 0.85), (0.40, 0.79), (0.62, 0.79),
+               (0.80, 0.85), (0.99, 1.0)]), fill=255)
 
-mask = mask.filter(ImageFilter.GaussianBlur(5))
+mask = mask.filter(ImageFilter.GaussianBlur(4))
 
-gray = ImageOps.autocontrast(img, cutoff=1)
+# Sharpen features, then stretch contrast across the SUBJECT's tonal range only
+# (a global autocontrast is dominated by the black background and flattens the
+# face into one density band).
+gray = img.filter(ImageFilter.UnsharpMask(radius=3, percent=130))
 px, mx = gray.load(), mask.load()
+subject = sorted(px[x, y] for y in range(H) for x in range(W) if mx[x, y] > 128)
+lo, hi = subject[int(len(subject) * 0.02)], subject[int(len(subject) * 0.98)]
+
 out = Image.new("L", (W, H), 0)
 op = out.load()
 for y in range(H):
     for x in range(W):
         a = mx[x, y] / 255.0
-        op[x, y] = int(a * max(px[x, y], SUBJECT_FLOOR))
+        v = (min(max(px[x, y], lo), hi) - lo) / (hi - lo) * 255
+        op[x, y] = int(a * max(v, SUBJECT_FLOOR))
 
 out.save(ROOT / "assets/portrait_masked.png")
-print("wrote assets/portrait_masked.png")
+print(f"wrote assets/portrait_masked.png ({W}x{H})")
