@@ -39,43 +39,60 @@ TOKENS = {
 MONO = ("font-family=\"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,"
         "'DejaVu Sans Mono','Liberation Mono',monospace\"")
 
-# Halftone portrait: glyph texture ramp + per-tone color stops.
+# Halftone portrait: glyph texture ramp + CONTINUOUS tone-to-color mapping —
+# per-cell colors are interpolated between anchor points instead of quantized
+# into a few hard bands, so the face keeps photographic gradation.
 GLYPHS = " .':;i1tfLCG08@"
 # Cells at or below SKIP are background. Set just above the matte's soft-edge
 # falloff band: in light mode those low-alpha edge cells would invert to the
 # DARKEST ink and draw a heavy outline ring around the silhouette.
 SKIP = 45
-HALFTONE = {
-    # dark mode: brighter pixel -> hotter color (deep red -> brand red -> bone)
-    "dark": [(37, "#69161f"), (64, "#8a1826"), (96, "#a81828"), (128, "#bf182b"),
-             (160, "#d63a41"), (192, "#e5484d"), (220, "#eda28f"),
-             (242, "#ece7dd")],
-    # light mode: stops indexed by ink strength (255 - tone); darker feature -> heavier
-    # ink. Visible warm floor so skin never fades to paper, then a deliberate cliff
-    # into the feature bands so eyes/brows/beard stand off the skin field.
-    "light": [(0, "#dcae93"), (64, "#d09a7c"), (112, "#b45a45"), (152, "#9c2b28"),
-              (184, "#8c0f1b"), (216, "#690a11")],
+TONE_STEP = 8  # quantize to 32 levels so same-tone runs still merge into one tspan
+ANCHORS = {
+    # dark mode: level = tone; brighter pixel -> hotter (deep red -> brand red -> bone)
+    "dark": [(46, "#3a1116"), (96, "#8f1824"), (150, "#c9182b"), (200, "#e5484d"),
+             (232, "#f0a58c"), (255, "#ece7dd")],
+    # light mode: level = ink strength (255 - tone); darker feature -> heavier ink
+    "light": [(0, "#e2bda6"), (80, "#c97f64"), (140, "#ad4238"), (190, "#a4111f"),
+              (230, "#6f0b13"), (255, "#57080f")],
 }
+
+
+def _rgb(h):
+    return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def tone_color(level, mode):
+    """Piecewise-linear interpolation between the mode's color anchors."""
+    anchors = ANCHORS[mode]
+    if level <= anchors[0][0]:
+        return anchors[0][1]
+    for (l0, c0), (l1, c1) in zip(anchors, anchors[1:]):
+        if level <= l1:
+            f = (level - l0) / (l1 - l0)
+            a, b = _rgb(c0), _rgb(c1)
+            return "#%02x%02x%02x" % tuple(round(a[i] + (b[i] - a[i]) * f) for i in range(3))
+    return anchors[-1][1]
 
 
 def halftone_cell(tone, mode, frac_y=0.0):
     """(glyph, color) for one portrait cell, or None for background."""
     if tone <= SKIP:
         return None
-    level = tone if mode == "dark" else 255 - tone
+    if mode == "dark":
+        # lift midtones so the face sits in the hot half of the ramp; light
+        # mode maps ink strength and needs no lift (it would wash the ink out)
+        level = round(255 * (tone / 255) ** 0.82)
+    else:
+        level = 255 - tone
     if mode == "light" and frac_y > 0.78:
         level = min(level, 168)  # mute the clothing slab below the shoulder line
     if mode == "dark" and frac_y > 0.74:
-        level = max(level, 75)  # give the garment a solid mass instead of faint mist
+        level = max(level, 85)  # give the garment a solid mass instead of faint mist
+    level = min(round(level / TONE_STEP) * TONE_STEP, 255)
     idx = min(int(level / 255 * len(GLYPHS)), len(GLYPHS) - 1)
-    if mode == "light":
-        idx = max(idx, 3)  # keep the skin field contiguous instead of airy dots
-    glyph = GLYPHS[idx]
-    color = HALFTONE[mode][0][1]
-    for threshold, c in HALFTONE[mode]:
-        if level >= threshold:
-            color = c
-    return glyph, color
+    idx = max(idx, 3)  # subject cells stay contiguous; no voids in eye sockets
+    return GLYPHS[idx], tone_color(level, mode)
 
 
 def fetch_stats():
@@ -123,9 +140,10 @@ def build_svg(mode, grid, stats):
     W, H = 920, 568
     pad = 24
 
-    # portrait well geometry
+    # portrait well geometry — glyph size derives from the grid's column count
+    # so denser grids render at the same panel width
     cols, rows_n, tones = grid["cols"], grid["rows"], grid["tones"]
-    art_fs = 6.1
+    art_fs = 380.0 / (cols * 0.6)
     art_lh = art_fs * 1.28
     well_w = round(cols * art_fs * 0.6) + 36
     well_h = H - 2 * pad
