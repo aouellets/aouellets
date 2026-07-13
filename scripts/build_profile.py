@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Generate assets/profile-dark.svg and assets/profile-light.svg.
 
-Layout: ASCII face portrait (assets/portrait_ascii.txt) in an inset well on
-the left; name, roles, stack, shipped work, stat chips, and contact on the
-right. GFBT palette — near-black surfaces, bone text, blood-red accent.
+Layout: ASCII halftone face portrait (assets/portrait_tones.json — a per-cell
+luminance grid) in an inset well on the left; name, roles, stack, shipped
+work, stat chips, and contact on the right. GFBT palette — near-black
+surfaces, bone text, blood-red accent. Each portrait cell gets a glyph AND a
+color from a deep-red-to-bone ramp, so the face carries photographic tone.
 
 GitHub stats are fetched live when GITHUB_TOKEN (or GH_TOKEN) is set — the
 profile workflow provides one — and fall back to "--" placeholders offline.
@@ -36,6 +38,32 @@ TOKENS = {
 
 MONO = ("font-family=\"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,"
         "'DejaVu Sans Mono','Liberation Mono',monospace\"")
+
+# Halftone portrait: glyph texture ramp + per-tone color stops.
+GLYPHS = " .':;i1tfLCG08@"
+SKIP = 36  # cells at or below this tone are background — render nothing
+HALFTONE = {
+    # dark mode: brighter pixel -> hotter color (deep red -> brand red -> bone)
+    "dark": [(37, "#5c151b"), (64, "#7d1722"), (96, "#a01827"), (128, "#bf182b"),
+             (160, "#d63a41"), (192, "#e5484d"), (220, "#eda28f"),
+             (242, "#ece7dd")],
+    # light mode: stops indexed by ink strength (255 - tone); darker feature -> heavier ink
+    "light": [(0, "#f0dcd1"), (48, "#e3b9a8"), (96, "#cd8677"), (144, "#b5544b"),
+              (176, "#a4111f"), (216, "#7f0d16")],
+}
+
+
+def halftone_cell(tone, mode):
+    """(glyph, color) for one portrait cell, or None for background."""
+    if tone <= SKIP:
+        return None
+    level = tone if mode == "dark" else 255 - tone
+    glyph = GLYPHS[min(int(level / 255 * len(GLYPHS)), len(GLYPHS) - 1)]
+    color = HALFTONE[mode][0][1]
+    for threshold, c in HALFTONE[mode]:
+        if level >= threshold:
+            color = c
+    return glyph, color
 
 
 def fetch_stats():
@@ -77,19 +105,20 @@ def esc(t):
     return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def build_svg(mode, ascii_lines, stats):
+def build_svg(mode, grid, stats):
     t = TOKENS[mode]
     s = stats or {k: "--" for k in ("repos", "contribs", "years", "followers")}
     W, H = 920, 568
     pad = 24
 
     # portrait well geometry
-    art_fs, art_lh = 11.8, 15.7
-    art_cols = max(len(l) for l in ascii_lines)
-    well_w = round(art_cols * art_fs * 0.6) + 36
+    cols, rows_n, tones = grid["cols"], grid["rows"], grid["tones"]
+    art_fs = 6.1
+    art_lh = art_fs * 1.28
+    well_w = round(cols * art_fs * 0.6) + 36
     well_h = H - 2 * pad
     art_x = pad + 18
-    art_y0 = pad + (well_h - len(ascii_lines) * art_lh) / 2 + 4
+    art_y0 = pad + (well_h - rows_n * art_lh) / 2 + art_fs
 
     rx = pad + well_w + 26          # right column origin
     rw = W - rx - pad               # right column width
@@ -103,14 +132,30 @@ def build_svg(mode, ascii_lines, stats):
         f'<rect x="{pad}" y="{pad}" width="{well_w}" height="{well_h}" rx="10" fill="{t["well"]}"/>',
     ]
 
-    # ascii face, red
-    for i, line in enumerate(ascii_lines):
-        if not line.strip():
+    # halftone face: per-cell glyph + color, merged into same-color tspan runs.
+    # Background cells become spaces that inherit the current run so column
+    # alignment is preserved.
+    for i, row_tones in enumerate(tones):
+        runs, cur_color, buf = [], None, ""
+        for tone in row_tones:
+            cell = halftone_cell(tone, mode)
+            glyph, color = (" ", cur_color) if cell is None else cell
+            if color != cur_color:
+                if buf:
+                    runs.append((cur_color, buf))
+                cur_color, buf = color, ""
+            buf += glyph
+        if buf:
+            runs.append((cur_color, buf))
+        if not any(txt.strip() for _, txt in runs):
             continue
+        tspans = "".join(
+            f'<tspan fill="{c}">{esc(txt)}</tspan>' if c else f'<tspan>{esc(txt)}</tspan>'
+            for c, txt in runs)
         svg.append(f'<text x="{art_x}" y="{art_y0 + i * art_lh:.1f}" xml:space="preserve" '
-                   f'{MONO} font-size="{art_fs}" fill="{t["red"]}">{esc(line)}</text>')
+                   f'{MONO} font-size="{art_fs}">{tspans}</text>')
     svg.append(f'<text x="{art_x}" y="{pad + well_h - 14}" {MONO} font-size="10" '
-               f'fill="{t["dim"]}">$ ascii --render portrait.jpg</text>')
+               f'fill="{t["dim"]}">$ ascii --halftone portrait.jpg</text>')
 
     y = pad + 40
 
@@ -190,11 +235,11 @@ def build_svg(mode, ascii_lines, stats):
 
 
 def main():
-    ascii_lines = (ROOT / "assets/portrait_ascii.txt").read_text().splitlines()
+    grid = json.loads((ROOT / "assets/portrait_tones.json").read_text())
     stats = fetch_stats()
     for mode in ("dark", "light"):
         path = ROOT / f"assets/profile-{mode}.svg"
-        path.write_text(build_svg(mode, ascii_lines, stats))
+        path.write_text(build_svg(mode, grid, stats))
         print(f"wrote {path}")
 
 

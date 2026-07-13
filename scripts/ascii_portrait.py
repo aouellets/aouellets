@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Convert a portrait photo into an ASCII character grid for the profile SVG.
+"""Convert a portrait photo into ASCII art or a halftone tone grid.
 
-Usage:
-    python3 scripts/ascii_portrait.py assets/portrait.jpg > assets/portrait_ascii.txt
+The profile pipeline uses the tone-grid mode (per-cell luminance JSON that
+scripts/build_profile.py renders as a colored halftone):
+    python3 scripts/ascii_portrait.py assets/portrait_masked.png \
+        --cols 104 --crop 0.15 0.02 0.87 0.90 --char-aspect 0.44 \
+        --contrast 1.05 --json assets/portrait_tones.json
 
-The defaults (crop window, columns, tone mapping) are tuned for the current
-portrait; pass --help for the knobs to re-tune after swapping the photo.
+Without --json it prints plain ASCII text. Pass --help for the tuning knobs.
 """
 
 import argparse
+import json
 import sys
 
 from PIL import Image, ImageEnhance, ImageOps
@@ -42,6 +45,20 @@ def to_ascii(path, cols, crop, char_aspect, contrast, invert, gamma):
     return lines
 
 
+def to_tones(path, cols, crop, char_aspect, contrast, gamma):
+    """Per-cell luminance grid (0-255) for the halftone renderer."""
+    img = Image.open(path).convert("L")
+    w, h = img.size
+    l, t, r, b = (int(c * s) for c, s in zip(crop, (w, h, w, h)))
+    img = img.crop((l, t, r, b))
+    img = ImageEnhance.Contrast(img).enhance(contrast)
+    rows = max(1, round(cols * (img.height / img.width) * char_aspect))
+    img = img.resize((cols, rows), Image.LANCZOS)
+    px = img.load()
+    return [[int(((px[x, y] / 255.0) ** gamma) * 255) for x in range(cols)]
+            for y in range(rows)]
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("image")
@@ -55,7 +72,16 @@ def main():
                    help=">1 darkens midtones, <1 brightens them")
     p.add_argument("--invert", action="store_true",
                    help="map dark pixels to dense glyphs instead of bright ones")
+    p.add_argument("--json", metavar="PATH",
+                   help="write a tone grid JSON (for the halftone SVG renderer) "
+                        "instead of printing ASCII text")
     a = p.parse_args()
+    if a.json:
+        tones = to_tones(a.image, a.cols, a.crop, a.char_aspect, a.contrast, a.gamma)
+        with open(a.json, "w") as f:
+            json.dump({"cols": a.cols, "rows": len(tones), "tones": tones}, f)
+        print(f"wrote {a.json} ({a.cols}x{len(tones)})")
+        return
     sys.stdout.write("\n".join(to_ascii(a.image, a.cols, a.crop, a.char_aspect,
                                         a.contrast, a.invert, a.gamma)) + "\n")
 

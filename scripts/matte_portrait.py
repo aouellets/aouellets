@@ -9,11 +9,12 @@ the ASCII grid.
 The crop box and shapes below are tuned to the CURRENT photo. If you swap the
 photo, re-trace them; coordinates are fractions of the CROPPED frame.
 
-Full pipeline after swapping assets/portrait.jpg:
+Full pipeline after swapping assets/portrait.jpg (a higher-resolution,
+face-forward photo gives the halftone more detail to work with):
     python3 scripts/matte_portrait.py
     python3 scripts/ascii_portrait.py assets/portrait_masked.png \
-        --cols 56 --crop 0 0 1 1 --char-aspect 0.5 --contrast 1.15 \
-        --gamma 1.25 > assets/portrait_ascii.txt
+        --cols 104 --crop 0.15 0.02 0.87 0.90 --char-aspect 0.44 \
+        --contrast 1.05 --json assets/portrait_tones.json
     python3 scripts/build_profile.py
 """
 
@@ -45,7 +46,7 @@ d.polygon(pts([(0.40, 0.60), (0.62, 0.60), (0.64, 0.88), (0.38, 0.88)]), fill=25
 d.polygon(pts([(0.03, 1.0), (0.22, 0.85), (0.40, 0.79), (0.62, 0.79),
                (0.80, 0.85), (0.99, 1.0)]), fill=255)
 
-mask = mask.filter(ImageFilter.GaussianBlur(4))
+mask = mask.filter(ImageFilter.GaussianBlur(2.5))
 
 # Sharpen features, then stretch contrast across the SUBJECT's tonal range only
 # (a global autocontrast is dominated by the black background and flattens the
