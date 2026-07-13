@@ -92,21 +92,27 @@ def halftone_cell(cell, mode, frac_y=0.0):
         level = round(255 * (lum / 255) ** 0.82)
     else:
         level = 255 - lum
-    if mode == "light" and frac_y > 0.78:
-        level = min(level, 168)  # mute the clothing slab below the shoulder line
-    if mode == "dark" and frac_y > 0.74:
-        level = max(level, 85)  # give the garment a solid mass instead of faint mist
+    if PORTRAIT_STYLE == "brand":
+        # silhouette-era garment-zone shaping; the full-rectangle photo print
+        # stays tone-faithful instead
+        if mode == "light" and frac_y > 0.78:
+            level = min(level, 168)
+        if mode == "dark" and frac_y > 0.74:
+            level = max(level, 85)
     level = min(round(level / TONE_STEP) * TONE_STEP, 255)
     idx = min(int(level / 255 * len(GLYPHS)), len(GLYPHS) - 1)
     idx = max(idx, 3)  # subject cells stay contiguous; no voids in eye sockets
+    if mode == "dark" and PORTRAIT_STYLE == "photo" and level > 100:
+        # photo colors are midtone; denser glyphs raise ink coverage so the
+        # subject reads luminous despite the ~40% cell fill of a glyph
+        idx = min(idx + 2, len(GLYPHS) - 1)
     if mode == "dark" and PORTRAIT_STYLE == "photo":
         # true photo color: value-lifted for the dark card, floored in the
         # garment zone so the near-black tee stays visible, channels rounded
         # to 32 levels so same-color runs still merge
-        rr, gg, bb = (round(255 * (c / 255) ** 0.58) for c in (r, g, b))
-        if frac_y > 0.74 and max(rr, gg, bb) < 70:
-            scale = 70 / max(max(rr, gg, bb), 1)
-            rr, gg, bb = (min(round(c * scale), 255) for c in (rr, gg, bb))
+        # exposure is baked into the color matte (subject-weighted); only a
+        # gentle global lift here
+        rr, gg, bb = (round(255 * (c / 255) ** 0.9) for c in (r, g, b))
         rr, gg, bb = (min(round(c / 8) * 8, 255) for c in (rr, gg, bb))
         return GLYPHS[idx], "#%02x%02x%02x" % (rr, gg, bb)
     return GLYPHS[idx], tone_color(level, mode)
