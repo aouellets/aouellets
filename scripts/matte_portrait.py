@@ -45,15 +45,17 @@ W, H = gray.size
 def pts(fr):
     return [(x * W, y * H) for x, y in fr]
 
-# soft face/bust matte — used only to dim the background, never to cut it out
+# soft face/bust matte — used only to dim the background, never to cut it
+# out, so it errs GENEROUS: overshoot just means softly lit background near
+# the subject. Head ellipse centered on the actual head (it sits left of the
+# frame center); below the shoulder line the photo is subject edge to edge.
 mask = Image.new("L", (W, H), 0)
 d = ImageDraw.Draw(mask)
-d.ellipse([0.215 * W, 0.039 * H, 0.782 * W, 0.685 * H], fill=255)
-d.polygon(pts([(0.35, 0.56), (0.65, 0.56), (0.67, 0.83), (0.33, 0.83)]), fill=255)
-d.polygon(pts([(-0.20, 0.96), (0.10, 0.80), (0.35, 0.74), (0.65, 0.74),
-               (0.90, 0.80), (1.20, 0.96), (1.35, 1.15), (1.35, 1.40),
-               (-0.30, 1.40), (-0.30, 1.15)]), fill=255)
-mask = mask.filter(ImageFilter.GaussianBlur(6))
+d.ellipse([0.19 * W, 0.02 * H, 0.78 * W, 0.70 * H], fill=255)
+d.polygon(pts([(0.33, 0.56), (0.67, 0.56), (0.69, 0.84), (0.31, 0.84)]), fill=255)
+d.polygon(pts([(-0.05, 0.86), (0.12, 0.795), (0.32, 0.75), (0.68, 0.75),
+               (0.88, 0.795), (1.05, 0.86), (1.05, 1.30), (-0.05, 1.30)]), fill=255)
+mask = mask.filter(ImageFilter.GaussianBlur(8))
 mx = mask.load()
 
 # expose for the face: stretch percentiles from the subject region only
