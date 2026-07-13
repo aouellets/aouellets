@@ -15,8 +15,8 @@ Full pipeline after swapping assets/portrait.jpg (a higher-resolution,
 face-forward photo gives the halftone more detail to work with):
     python3 scripts/matte_portrait.py
     python3 scripts/ascii_portrait.py assets/portrait_masked.png \
-        --cols 104 --crop 0 0 1 1 --char-aspect 0.43 \
-        --contrast 1.05 --json assets/portrait_tones.json
+        --cols 128 --crop 0 0 1 1 --char-aspect 0.43 \
+        --contrast 1.0 --json assets/portrait_tones.json
     python3 scripts/build_profile.py
 """
 
@@ -53,13 +53,14 @@ d.polygon(pts([(-0.20, 0.96), (0.10, 0.80), (0.35, 0.74), (0.65, 0.74),
 
 mask = mask.filter(ImageFilter.GaussianBlur(2.5))
 
-# Sharpen features, then stretch contrast across the SUBJECT's tonal range only
-# (a global autocontrast is dominated by the black background and flattens the
-# face into one density band).
-gray = img.filter(ImageFilter.UnsharpMask(radius=3, percent=130))
+# Sharpen features gently, then stretch contrast across the SUBJECT's tonal
+# range only (a global autocontrast is dominated by the black background and
+# flattens the face into one density band). Kept mild so the face preserves
+# its natural gradation — the renderer's continuous ramp carries the contrast.
+gray = img.filter(ImageFilter.UnsharpMask(radius=2, percent=80))
 px, mx = gray.load(), mask.load()
 subject = sorted(px[x, y] for y in range(H) for x in range(W) if mx[x, y] > 128)
-lo, hi = subject[int(len(subject) * 0.02)], subject[int(len(subject) * 0.98)]
+lo, hi = subject[int(len(subject) * 0.01)], subject[int(len(subject) * 0.99)]
 
 out = Image.new("L", (W, H), 0)
 op = out.load()
