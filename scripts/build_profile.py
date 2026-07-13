@@ -75,16 +75,23 @@ def tone_color(level, mode):
     return anchors[-1][1]
 
 
-def halftone_cell(tone, mode, frac_y=0.0):
+# "photo" renders the dark-mode portrait in the photo's true colors (glyphs
+# still carry the texture); "brand" is the red duotone. Light mode always
+# uses the red-ink ramp — photo colors wash out on the cream well.
+PORTRAIT_STYLE = "photo"
+
+
+def halftone_cell(cell, mode, frac_y=0.0):
     """(glyph, color) for one portrait cell, or None for background."""
-    if tone <= SKIP:
+    lum, r, g, b = cell
+    if lum <= SKIP:
         return None
     if mode == "dark":
         # lift midtones so the face sits in the hot half of the ramp; light
         # mode maps ink strength and needs no lift (it would wash the ink out)
-        level = round(255 * (tone / 255) ** 0.82)
+        level = round(255 * (lum / 255) ** 0.82)
     else:
-        level = 255 - tone
+        level = 255 - lum
     if mode == "light" and frac_y > 0.78:
         level = min(level, 168)  # mute the clothing slab below the shoulder line
     if mode == "dark" and frac_y > 0.74:
@@ -92,6 +99,16 @@ def halftone_cell(tone, mode, frac_y=0.0):
     level = min(round(level / TONE_STEP) * TONE_STEP, 255)
     idx = min(int(level / 255 * len(GLYPHS)), len(GLYPHS) - 1)
     idx = max(idx, 3)  # subject cells stay contiguous; no voids in eye sockets
+    if mode == "dark" and PORTRAIT_STYLE == "photo":
+        # true photo color: value-lifted for the dark card, floored in the
+        # garment zone so the near-black tee stays visible, channels rounded
+        # to 32 levels so same-color runs still merge
+        rr, gg, bb = (round(255 * (c / 255) ** 0.58) for c in (r, g, b))
+        if frac_y > 0.74 and max(rr, gg, bb) < 70:
+            scale = 70 / max(max(rr, gg, bb), 1)
+            rr, gg, bb = (min(round(c * scale), 255) for c in (rr, gg, bb))
+        rr, gg, bb = (min(round(c / 8) * 8, 255) for c in (rr, gg, bb))
+        return GLYPHS[idx], "#%02x%02x%02x" % (rr, gg, bb)
     return GLYPHS[idx], tone_color(level, mode)
 
 
@@ -165,10 +182,10 @@ def build_svg(mode, grid, stats):
     # halftone face: per-cell glyph + color, merged into same-color tspan runs.
     # Background cells become spaces that inherit the current run so column
     # alignment is preserved.
-    for i, row_tones in enumerate(tones):
+    for i, row_cells in enumerate(tones):
         runs, cur_color, buf = [], None, ""
-        for tone in row_tones:
-            cell = halftone_cell(tone, mode, i / max(rows_n - 1, 1))
+        for cell_data in row_cells:
+            cell = halftone_cell(cell_data, mode, i / max(rows_n - 1, 1))
             glyph, color = (" ", cur_color) if cell is None else cell
             if color != cur_color:
                 if buf:

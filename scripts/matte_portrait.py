@@ -16,13 +16,14 @@ face-forward photo gives the halftone more detail to work with):
     python3 scripts/matte_portrait.py
     python3 scripts/ascii_portrait.py assets/portrait_masked.png \
         --cols 128 --crop 0 0 1 1 --char-aspect 0.43 \
+        --rgb assets/portrait_masked_rgb.png \
         --contrast 1.0 --json assets/portrait_tones.json
     python3 scripts/build_profile.py
 """
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 CROP = (0.325, 0.008, 0.665, 0.444)  # bust frame within the source photo
@@ -72,3 +73,19 @@ for y in range(H):
 
 out.save(ROOT / "assets/portrait_masked.png")
 print(f"wrote assets/portrait_masked.png ({W}x{H})")
+
+# Color companion for the true-color halftone: the same crop and matte applied
+# to the RGB photo (composited on black), with a gentle saturation lift.
+rgb = Image.open(ROOT / "assets/portrait.jpg").convert("RGB").crop(
+    (int(CROP[0] * sw), int(CROP[1] * sh), int(CROP[2] * sw), int(CROP[3] * sh)))
+rgb = ImageEnhance.Color(rgb).enhance(1.12)
+rp = rgb.load()
+rgb_out = Image.new("RGB", (W, H), (0, 0, 0))
+rop = rgb_out.load()
+for y in range(H):
+    for x in range(W):
+        a = mx[x, y] / 255.0
+        rop[x, y] = tuple(int(c * a) for c in rp[x, y])
+
+rgb_out.save(ROOT / "assets/portrait_masked_rgb.png")
+print(f"wrote assets/portrait_masked_rgb.png ({W}x{H})")
