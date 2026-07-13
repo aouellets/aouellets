@@ -9,17 +9,20 @@
 
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&height=110&color=0:0a0a0a,100:7a0f1a&section=header" width="100%" alt="" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://capsule-render.vercel.app/api?type=waving&height=110&color=0:0a0a0a,100:7a0f1a&section=header" />
+  <img src="https://capsule-render.vercel.app/api?type=waving&height=110&color=0:faf8f4,100:a4111f&section=header" width="100%" alt="" />
+</picture>
 
 <a href="https://github.com/aouellets">
-  <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&weight=600&size=20&duration=2600&pause=900&color=E5484D&background=0A0A0A&center=true&vCenter=true&repeat=true&width=560&height=44&lines=AI+Product+Executive;Founder+%40+SkillMe;President+%40+HWPO+Training;MCP+servers+%C2%B7+RAG+pipelines+%C2%B7+industrial+AI" alt="AI Product Executive · Founder @ SkillMe · President @ HWPO Training · MCP servers, RAG pipelines, industrial AI" />
+  <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&weight=600&size=20&duration=2600&pause=900&color=E5484D&background=0A0A0A&center=true&vCenter=true&repeat=true&width=760&height=44&lines=AI+Product+Executive;Founder+%40+SkillMe;President+%40+HWPO+Training;MCP+servers+%C2%B7+RAG+pipelines+%C2%B7+industrial+AI" alt="AI Product Executive · Founder @ SkillMe · President @ HWPO Training · MCP servers, RAG pipelines, industrial AI" />
 </a>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/profile-dark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="assets/profile-light.svg" />
-  <img src="assets/profile-dark.svg" width="100%" alt="Terminal-style profile card: ASCII portrait of Alexander Ouellet beside roles, stack, shipped systems, contact, and GitHub stats" />
-</picture>
+<!-- The dark card is served on BOTH GitHub themes on purpose — a dark hero
+     panel on the light page is the GFBT look. Swap the src to
+     assets/profile-light.svg here if you ever want a theme-matched variant;
+     the generator still builds both. -->
+<img src="assets/profile-dark.svg" width="100%" alt="Terminal-style profile card: ASCII portrait of Alexander Ouellet beside roles, stack, shipped systems, contact, and GitHub stats" />
 
 </div>
 
@@ -61,6 +64,9 @@
 &nbsp;
 <a href="https://www.goodfriends-badtimes.com/"><img src="https://img.shields.io/badge/web-goodfriends--badtimes.com-c9182b?style=flat-square&labelColor=141112" alt="web: goodfriends-badtimes.com" /></a>
 
-<img src="https://capsule-render.vercel.app/api?type=waving&height=110&color=0:7a0f1a,100:0a0a0a&section=footer" width="100%" alt="" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://capsule-render.vercel.app/api?type=waving&height=110&color=0:7a0f1a,100:0a0a0a&section=footer" />
+  <img src="https://capsule-render.vercel.app/api?type=waving&height=110&color=0:a4111f,100:faf8f4&section=footer" width="100%" alt="" />
+</picture>
 
 </div>
