@@ -41,24 +41,34 @@ MONO = ("font-family=\"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,"
 
 # Halftone portrait: glyph texture ramp + per-tone color stops.
 GLYPHS = " .':;i1tfLCG08@"
-SKIP = 36  # cells at or below this tone are background — render nothing
+# Cells at or below SKIP are background. Set just above the matte's soft-edge
+# falloff band: in light mode those low-alpha edge cells would invert to the
+# DARKEST ink and draw a heavy outline ring around the silhouette.
+SKIP = 45
 HALFTONE = {
     # dark mode: brighter pixel -> hotter color (deep red -> brand red -> bone)
     "dark": [(37, "#5c151b"), (64, "#7d1722"), (96, "#a01827"), (128, "#bf182b"),
              (160, "#d63a41"), (192, "#e5484d"), (220, "#eda28f"),
              (242, "#ece7dd")],
-    # light mode: stops indexed by ink strength (255 - tone); darker feature -> heavier ink
-    "light": [(0, "#f0dcd1"), (48, "#e3b9a8"), (96, "#cd8677"), (144, "#b5544b"),
-              (176, "#a4111f"), (216, "#7f0d16")],
+    # light mode: stops indexed by ink strength (255 - tone); darker feature -> heavier
+    # ink. Visible warm floor so skin never fades to paper, then a deliberate cliff
+    # into the feature bands so eyes/brows/beard stand off the skin field.
+    "light": [(0, "#dcae93"), (64, "#d09a7c"), (112, "#b45a45"), (152, "#9c2b28"),
+              (184, "#8c0f1b"), (216, "#690a11")],
 }
 
 
-def halftone_cell(tone, mode):
+def halftone_cell(tone, mode, frac_y=0.0):
     """(glyph, color) for one portrait cell, or None for background."""
     if tone <= SKIP:
         return None
     level = tone if mode == "dark" else 255 - tone
-    glyph = GLYPHS[min(int(level / 255 * len(GLYPHS)), len(GLYPHS) - 1)]
+    if mode == "light" and frac_y > 0.78:
+        level = min(level, 168)  # mute the clothing slab below the shoulder line
+    idx = min(int(level / 255 * len(GLYPHS)), len(GLYPHS) - 1)
+    if mode == "light":
+        idx = max(idx, 3)  # keep the skin field contiguous instead of airy dots
+    glyph = GLYPHS[idx]
     color = HALFTONE[mode][0][1]
     for threshold, c in HALFTONE[mode]:
         if level >= threshold:
@@ -138,7 +148,7 @@ def build_svg(mode, grid, stats):
     for i, row_tones in enumerate(tones):
         runs, cur_color, buf = [], None, ""
         for tone in row_tones:
-            cell = halftone_cell(tone, mode)
+            cell = halftone_cell(tone, mode, i / max(rows_n - 1, 1))
             glyph, color = (" ", cur_color) if cell is None else cell
             if color != cur_color:
                 if buf:

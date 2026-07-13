@@ -24,7 +24,9 @@ from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
 CROP = (0.26, 0.0, 0.72, 0.42)  # face box within the source photo
-SUBJECT_FLOOR = 46  # min luminance inside the matte so dark clothing keeps texture
+SUBJECT_FLOOR = 60  # min luminance inside the matte so dark clothing keeps texture
+# (must sit clearly above build_profile.SKIP so the clothing mass survives the
+# background cutoff in both render modes)
 
 src = Image.open(ROOT / "assets/portrait.jpg").convert("L")
 sw, sh = src.size
