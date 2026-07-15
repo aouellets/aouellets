@@ -75,23 +75,49 @@ def tone_color(level, mode):
     return anchors[-1][1]
 
 
-def halftone_cell(tone, mode, frac_y=0.0):
+# "brand" is the red duotone (full rectangle, no mask); "photo" renders the
+# dark-mode portrait in the photo's true colors. Light mode always uses the
+# red-ink ramp — photo colors wash out on the cream well.
+PORTRAIT_STYLE = "brand"
+
+
+def halftone_cell(cell, mode, frac_y=0.0):
     """(glyph, color) for one portrait cell, or None for background."""
-    if tone <= SKIP:
+    lum, r, g, b = cell
+    if lum <= SKIP:
         return None
     if mode == "dark":
         # lift midtones so the face sits in the hot half of the ramp; light
         # mode maps ink strength and needs no lift (it would wash the ink out)
-        level = round(255 * (tone / 255) ** 0.82)
+        level = round(255 * (lum / 255) ** 0.82)
     else:
-        level = 255 - tone
-    if mode == "light" and frac_y > 0.78:
-        level = min(level, 168)  # mute the clothing slab below the shoulder line
-    if mode == "dark" and frac_y > 0.74:
-        level = max(level, 85)  # give the garment a solid mass instead of faint mist
+        level = 255 - lum
+    # brand = full-rectangle red duotone, tone-faithful (no garment shaping)
     level = min(round(level / TONE_STEP) * TONE_STEP, 255)
     idx = min(int(level / 255 * len(GLYPHS)), len(GLYPHS) - 1)
     idx = max(idx, 3)  # subject cells stay contiguous; no voids in eye sockets
+    if mode == "dark" and PORTRAIT_STYLE == "photo" and level > 100:
+        # photo colors are midtone; denser glyphs raise ink coverage so the
+        # subject reads luminous despite the ~40% cell fill of a glyph
+        idx = min(idx + 2, len(GLYPHS) - 1)
+    if mode == "dark" and PORTRAIT_STYLE == "photo":
+        # true photo color: value-lifted for the dark card, floored in the
+        # garment zone so the near-black tee stays visible, channels rounded
+        # to 32 levels so same-color runs still merge
+        # exposure is baked into the color matte (subject-weighted); only a
+        # gentle global lift here
+        rr, gg, bb = (round(255 * (c / 255) ** 0.9) for c in (r, g, b))
+        # garment mass: below the shoulder line, cells that still carry color
+        # are fabric (the desaturated backdrop tops out near-black). Flatten
+        # the whole band to one quiet navy tone with only a whisper of shading
+        # and uniform glyph texture — fold highlights and the chest print
+        # otherwise speckle the fabric with lighter cells.
+        if frac_y > 0.70 and max(rr, gg, bb) > 48:
+            shade = 108 + min(max(level - 96, 0), 64) * 0.25
+            rr, gg, bb = (round(shade * f) for f in (0.78, 0.82, 1.0))
+            idx = 8
+        rr, gg, bb = (min(round(c / 8) * 8, 255) for c in (rr, gg, bb))
+        return GLYPHS[idx], "#%02x%02x%02x" % (rr, gg, bb)
     return GLYPHS[idx], tone_color(level, mode)
 
 
@@ -140,13 +166,13 @@ def build_svg(mode, grid, stats):
     W, H = 920, 568
     pad = 24
 
-    # portrait well geometry — glyph size derives from the grid's column count
-    # so denser grids render at the same panel width
+    # portrait well geometry — glyph size is set so the full-rectangle portrait
+    # fills the well height, and the well width follows the grid's aspect
     cols, rows_n, tones = grid["cols"], grid["rows"], grid["tones"]
-    art_fs = 380.0 / (cols * 0.6)
+    well_h = H - 2 * pad
+    art_fs = (well_h - 16) / (rows_n * 1.28)
     art_lh = art_fs * 1.28
     well_w = round(cols * art_fs * 0.6) + 36
-    well_h = H - 2 * pad
     art_x = pad + 18
     art_y0 = pad + (well_h - rows_n * art_lh) / 2 + art_fs
 
@@ -165,10 +191,10 @@ def build_svg(mode, grid, stats):
     # halftone face: per-cell glyph + color, merged into same-color tspan runs.
     # Background cells become spaces that inherit the current run so column
     # alignment is preserved.
-    for i, row_tones in enumerate(tones):
+    for i, row_cells in enumerate(tones):
         runs, cur_color, buf = [], None, ""
-        for tone in row_tones:
-            cell = halftone_cell(tone, mode, i / max(rows_n - 1, 1))
+        for cell_data in row_cells:
+            cell = halftone_cell(cell_data, mode, i / max(rows_n - 1, 1))
             glyph, color = (" ", cur_color) if cell is None else cell
             if color != cur_color:
                 if buf:

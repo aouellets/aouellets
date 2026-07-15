@@ -45,18 +45,34 @@ def to_ascii(path, cols, crop, char_aspect, contrast, invert, gamma):
     return lines
 
 
-def to_tones(path, cols, crop, char_aspect, contrast, gamma):
-    """Per-cell luminance grid (0-255) for the halftone renderer."""
+def to_tones(path, cols, crop, char_aspect, contrast, gamma, rgb_path=None):
+    """Per-cell [lum, r, g, b] grid for the halftone renderer.
+
+    Luminance comes from `path` (the floored grayscale matte, driving glyph
+    density and the duotone ramp); r/g/b come from `rgb_path` (the color
+    matte) when given, else from the luminance channel.
+    """
     img = Image.open(path).convert("L")
     w, h = img.size
-    l, t, r, b = (int(c * s) for c, s in zip(crop, (w, h, w, h)))
-    img = img.crop((l, t, r, b))
+    box = tuple(int(c * s) for c, s in zip(crop, (w, h, w, h)))
+    img = img.crop(box)
     img = ImageEnhance.Contrast(img).enhance(contrast)
     rows = max(1, round(cols * (img.height / img.width) * char_aspect))
     img = img.resize((cols, rows), Image.LANCZOS)
     px = img.load()
-    return [[int(((px[x, y] / 255.0) ** gamma) * 255) for x in range(cols)]
-            for y in range(rows)]
+
+    rgb = Image.open(rgb_path).convert("RGB").crop(box).resize(
+        (cols, rows), Image.LANCZOS).load() if rgb_path else None
+
+    grid = []
+    for y in range(rows):
+        row = []
+        for x in range(cols):
+            lum = int(((px[x, y] / 255.0) ** gamma) * 255)
+            r, g, b = rgb[x, y] if rgb else (lum, lum, lum)
+            row.append([lum, r, g, b])
+        grid.append(row)
+    return grid
 
 
 def main():
@@ -75,9 +91,12 @@ def main():
     p.add_argument("--json", metavar="PATH",
                    help="write a tone grid JSON (for the halftone SVG renderer) "
                         "instead of printing ASCII text")
+    p.add_argument("--rgb", metavar="PATH",
+                   help="color matte image sampled for per-cell r/g/b (JSON mode)")
     a = p.parse_args()
     if a.json:
-        tones = to_tones(a.image, a.cols, a.crop, a.char_aspect, a.contrast, a.gamma)
+        tones = to_tones(a.image, a.cols, a.crop, a.char_aspect, a.contrast,
+                         a.gamma, rgb_path=a.rgb)
         with open(a.json, "w") as f:
             json.dump({"cols": a.cols, "rows": len(tones), "tones": tones}, f)
         print(f"wrote {a.json} ({a.cols}x{len(tones)})")

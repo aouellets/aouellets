@@ -1,74 +1,99 @@
 #!/usr/bin/env python3
-"""Bust-portrait matte for the profile halftone.
+"""Prepare the portrait crop for the profile halftone.
 
-Crops assets/portrait.jpg to a classic bust framing — ~5% headroom over the
-hair, head ≈53% of frame width, chin at ~60% height, shoulders and chest
-filling the bottom corners — cuts the subject out with a hand-traced polygon
-matte (no ML dependencies), and writes assets/portrait_masked.png for
-scripts/ascii_portrait.py.
+Full-rectangle print, no cutout: every cell of the frame renders. A soft
+face matte drives a BACKGROUND DIM (studio-dark backdrop) instead of a hard
+silhouette cut, so the figure emerges from a dark field with no visible
+matte edge, and exposure is set from the face region only.
 
-The crop box and shapes are tuned to the CURRENT photo. If you swap the
-photo, re-trace them; shape coordinates are fractions of the CROPPED frame
-(they may extend past 0..1 — PIL clips them to the frame).
+Outputs consumed by scripts/ascii_portrait.py:
+  assets/portrait_masked.png      grayscale, face-exposed, background-dimmed,
+                                  luminance floor so every cell draws a glyph
+  assets/portrait_masked_rgb.png  color companion, saturation-lifted, same dim
+
+The crop box and matte shapes are tuned to the CURRENT photo. If you swap
+the photo, re-trace them; shape coordinates are fractions of the CROPPED
+frame (they may extend past 0..1 — PIL clips them to the frame).
 
 Full pipeline after swapping assets/portrait.jpg (a higher-resolution,
 face-forward photo gives the halftone more detail to work with):
     python3 scripts/matte_portrait.py
     python3 scripts/ascii_portrait.py assets/portrait_masked.png \
         --cols 128 --crop 0 0 1 1 --char-aspect 0.43 \
+        --rgb assets/portrait_masked_rgb.png \
         --contrast 1.0 --json assets/portrait_tones.json
     python3 scripts/build_profile.py
 """
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 CROP = (0.325, 0.008, 0.665, 0.444)  # bust frame within the source photo
-SUBJECT_FLOOR = 60  # min luminance inside the matte so dark clothing keeps texture
-# (must sit clearly above build_profile.SKIP so the clothing mass survives the
-# background cutoff in both render modes)
+FLOOR = 60      # min luminance so the full rectangle stays a contiguous glyph field
+BG_LEVEL = 0.12  # background brightness relative to the subject
+BG_SAT = 0.25   # background keeps only a whisper of its color — the face owns it
 
-src = Image.open(ROOT / "assets/portrait.jpg").convert("L")
+src = Image.open(ROOT / "assets/portrait.jpg")
 sw, sh = src.size
-img = src.crop((int(CROP[0] * sw), int(CROP[1] * sh),
-                int(CROP[2] * sw), int(CROP[3] * sh)))
-W, H = img.size
+box = (int(CROP[0] * sw), int(CROP[1] * sh), int(CROP[2] * sw), int(CROP[3] * sh))
+
+gray = src.convert("L").crop(box).filter(ImageFilter.UnsharpMask(radius=2, percent=80))
+W, H = gray.size
 
 def pts(fr):
     return [(x * W, y * H) for x, y in fr]
 
+# soft face/bust matte — used only to dim the background, never to cut it
+# out, so it errs GENEROUS: overshoot just means softly lit background near
+# the subject. Head ellipse centered on the actual head (it sits left of the
+# frame center); below the shoulder line the photo is subject edge to edge.
 mask = Image.new("L", (W, H), 0)
 d = ImageDraw.Draw(mask)
+d.ellipse([0.19 * W, 0.02 * H, 0.78 * W, 0.70 * H], fill=255)
+d.polygon(pts([(0.33, 0.56), (0.67, 0.56), (0.69, 0.84), (0.31, 0.84)]), fill=255)
+d.polygon(pts([(-0.05, 0.86), (0.12, 0.795), (0.32, 0.75), (0.68, 0.75),
+               (0.88, 0.795), (1.05, 0.86), (1.05, 1.30), (-0.05, 1.30)]), fill=255)
+mask = mask.filter(ImageFilter.GaussianBlur(8))
+mx = mask.load()
 
-# head (with headroom — the ellipse starts above the hairline)
-d.ellipse([0.215 * W, 0.039 * H, 0.782 * W, 0.685 * H], fill=255)
-# neck
-d.polygon(pts([(0.35, 0.56), (0.65, 0.56), (0.67, 0.83), (0.33, 0.83)]), fill=255)
-# shoulders and chest, running off the frame edges so the bust is grounded
-d.polygon(pts([(-0.20, 0.96), (0.10, 0.80), (0.35, 0.74), (0.65, 0.74),
-               (0.90, 0.80), (1.20, 0.96), (1.35, 1.15), (1.35, 1.40),
-               (-0.30, 1.40), (-0.30, 1.15)]), fill=255)
-
-mask = mask.filter(ImageFilter.GaussianBlur(2.5))
-
-# Sharpen features gently, then stretch contrast across the SUBJECT's tonal
-# range only (a global autocontrast is dominated by the black background and
-# flattens the face into one density band). Kept mild so the face preserves
-# its natural gradation — the renderer's continuous ramp carries the contrast.
-gray = img.filter(ImageFilter.UnsharpMask(radius=2, percent=80))
-px, mx = gray.load(), mask.load()
+# expose for the face: stretch percentiles from the subject region only
+px = gray.load()
 subject = sorted(px[x, y] for y in range(H) for x in range(W) if mx[x, y] > 128)
-lo, hi = subject[int(len(subject) * 0.01)], subject[int(len(subject) * 0.99)]
+lo, hi = subject[int(len(subject) * 0.02)], subject[int(len(subject) * 0.98)]
+
+def dim(x, y):
+    return BG_LEVEL + (1.0 - BG_LEVEL) * (mx[x, y] / 255.0)
 
 out = Image.new("L", (W, H), 0)
 op = out.load()
 for y in range(H):
     for x in range(W):
-        a = mx[x, y] / 255.0
         v = (min(max(px[x, y], lo), hi) - lo) / (hi - lo) * 255
-        op[x, y] = int(a * max(v, SUBJECT_FLOOR))
-
+        op[x, y] = int(max(v * dim(x, y), FLOOR))
 out.save(ROOT / "assets/portrait_masked.png")
 print(f"wrote assets/portrait_masked.png ({W}x{H})")
+
+rgb = ImageEnhance.Color(src.convert("RGB").crop(box)).enhance(1.25)
+rp = rgb.load()
+rgb_out = Image.new("RGB", (W, H), (0, 0, 0))
+rop = rgb_out.load()
+for y in range(H):
+    for x in range(W):
+        f = dim(x, y)
+        m = mx[x, y] / 255.0
+        sat = BG_SAT + (1.0 - BG_SAT) * m
+        # subject-weighted exposure: the face/tee get a strong value lift so
+        # they read luminous on the dark card; the backdrop stays truly dark
+        gamma = 1.0 - 0.45 * m  # 1.0 (bg) -> 0.55 (subject)
+        r, g, b = rp[x, y]
+        lum = 0.299 * r + 0.587 * g + 0.114 * b
+        vals = []
+        for c in (r, g, b):
+            c = lum + (c - lum) * sat
+            c = 255 * (max(c, 0) / 255) ** gamma
+            vals.append(int(c * f))
+        rop[x, y] = tuple(vals)
+rgb_out.save(ROOT / "assets/portrait_masked_rgb.png")
+print(f"wrote assets/portrait_masked_rgb.png ({W}x{H})")
