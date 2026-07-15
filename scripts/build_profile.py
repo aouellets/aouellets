@@ -75,10 +75,10 @@ def tone_color(level, mode):
     return anchors[-1][1]
 
 
-# "photo" renders the dark-mode portrait in the photo's true colors (glyphs
-# still carry the texture); "brand" is the red duotone. Light mode always
-# uses the red-ink ramp — photo colors wash out on the cream well.
-PORTRAIT_STYLE = "photo"
+# "brand" is the red duotone (full rectangle, no mask); "photo" renders the
+# dark-mode portrait in the photo's true colors. Light mode always uses the
+# red-ink ramp — photo colors wash out on the cream well.
+PORTRAIT_STYLE = "brand"
 
 
 def halftone_cell(cell, mode, frac_y=0.0):
@@ -92,13 +92,7 @@ def halftone_cell(cell, mode, frac_y=0.0):
         level = round(255 * (lum / 255) ** 0.82)
     else:
         level = 255 - lum
-    if PORTRAIT_STYLE == "brand":
-        # silhouette-era garment-zone shaping; the full-rectangle photo print
-        # stays tone-faithful instead
-        if mode == "light" and frac_y > 0.78:
-            level = min(level, 168)
-        if mode == "dark" and frac_y > 0.74:
-            level = max(level, 85)
+    # brand = full-rectangle red duotone, tone-faithful (no garment shaping)
     level = min(round(level / TONE_STEP) * TONE_STEP, 255)
     idx = min(int(level / 255 * len(GLYPHS)), len(GLYPHS) - 1)
     idx = max(idx, 3)  # subject cells stay contiguous; no voids in eye sockets
@@ -172,13 +166,13 @@ def build_svg(mode, grid, stats):
     W, H = 920, 568
     pad = 24
 
-    # portrait well geometry — glyph size derives from the grid's column count
-    # so denser grids render at the same panel width
+    # portrait well geometry — glyph size is set so the full-rectangle portrait
+    # fills the well height, and the well width follows the grid's aspect
     cols, rows_n, tones = grid["cols"], grid["rows"], grid["tones"]
-    art_fs = 380.0 / (cols * 0.6)
+    well_h = H - 2 * pad
+    art_fs = (well_h - 16) / (rows_n * 1.28)
     art_lh = art_fs * 1.28
     well_w = round(cols * art_fs * 0.6) + 36
-    well_h = H - 2 * pad
     art_x = pad + 18
     art_y0 = pad + (well_h - rows_n * art_lh) / 2 + art_fs
 
